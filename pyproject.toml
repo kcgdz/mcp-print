@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-print"
-version = "0.2.0"
+version = "0.2.1"
 description = "MCP server for professional print and color workflows — 2400+ Pantone colors, CMYK/RGB conversion, ink/cost estimation, ICC profiles, spot color separation, and more."
 readme = "README.md"
 license = "MIT"
@@ -30,9 +30,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mcp-print/mcp-print"
-Repository = "https://github.com/mcp-print/mcp-print"
-Issues = "https://github.com/mcp-print/mcp-print/issues"
+Homepage = "https://github.com/kcgdz/mcp-print"
+Repository = "https://github.com/kcgdz/mcp-print"
+Issues = "https://github.com/kcgdz/mcp-print/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcp_print"]
