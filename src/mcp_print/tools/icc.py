@@ -108,7 +108,6 @@ def icc_profile_info(file_path: str) -> ICCProfileInfo:
         raise ValueError(f"Not a valid ICC profile (expected 'acsp' signature, got {sig!r})")
 
     # Header fields
-    profile_size = struct.unpack_from(">I", data, 0)[0]
     version_raw = struct.unpack_from(">I", data, 8)[0]
     major = (version_raw >> 24) & 0xFF
     minor = (version_raw >> 20) & 0x0F
