@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-print"
+version = "0.2.0"
+description = "MCP server for professional print and color workflows — 2400+ Pantone colors, CMYK/RGB conversion, ink/cost estimation, ICC profiles, spot color separation, and more."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "mcp-print contributors" },
+]
+keywords = ["mcp", "printing", "cmyk", "pantone", "prepress", "color", "ink"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Printing",
+]
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mcp-print/mcp-print"
+Repository = "https://github.com/mcp-print/mcp-print"
+Issues = "https://github.com/mcp-print/mcp-print/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_print"]
