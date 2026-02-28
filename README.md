@@ -96,6 +96,8 @@ Fuzzy matching accepts any format: `"485C"`, `"pantone 485"`, `"485 coated"`, `"
 { "name": "Pantone 485 C", "c": 0, "m": 95, "y": 100, "k": 0, "hex": "#FF0D0D" }
 ```
 
+<img src="cmyk.png" alt="Pantone CMYK lookup example" width="700">
+
 ---
 
 ### Reverse Pantone Search
@@ -214,6 +216,8 @@ Fuzzy matching accepts any format: `"485C"`, `"pantone 485"`, `"485 coated"`, `"
   "print_method_suggestion": "offset — good resolution for medium modules"
 }
 ```
+
+<img src="ink.png" alt="Barcode ink coverage analysis example" width="700">
 
 ---
 
