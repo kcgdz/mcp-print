@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/kcgdz/mcp-print/actions/workflows/ci.yml/badge.svg)](https://github.com/kcgdz/mcp-print/actions/workflows/ci.yml)
 
-2400+ Pantone colors &bull; CMYK/RGB conversion &bull; Ink & cost estimation &bull; ICC profiles &bull; Spot color separation &bull; Barcode coverage &bull; Delta E &bull; Paper weights
+2400+ Pantone colors &bull; CMYK/RGB conversion &bull; Ink & cost estimation &bull; ICC profiles &bull; Spot color separation &bull; Barcode coverage &bull; Delta E &bull; Paper weights &bull; Preflight checks &bull; Substrate simulation
 
 **Works 100% offline &mdash; no API keys needed**
 
@@ -24,8 +24,8 @@
 | Role | Use case |
 |---|---|
 | **Print designers** | Check Pantone-to-CMYK conversions without leaving your editor |
-| **Prepress engineers** | Estimate ink costs, verify color accuracy (Delta E), analyze ICC profiles |
-| **Packaging teams** | Convert paper weights, separate spot vs process colors, cost entire print runs |
+| **Prepress engineers** | Estimate ink costs, verify color accuracy (Delta E), analyze ICC profiles, run preflight checks |
+| **Packaging teams** | Convert paper weights, separate spot vs process colors, cost entire print runs, simulate substrate shifts |
 | **Brand managers** | Find the closest Pantone match to any HEX color |
 
 ## Install
@@ -51,7 +51,7 @@ Add to your Claude Code MCP config (`~/.claude/settings.json` or project `.mcp.j
 }
 ```
 
-Restart Claude Code — all ten tools will be available immediately.
+Restart Claude Code — all twelve tools will be available immediately.
 
 ## Tools
 
@@ -72,6 +72,8 @@ Restart Claude Code — all ten tools will be available immediately.
 | `ink_consumption_tool` | Estimate ink grams/kg and cost for a print run (offset, flexo, gravure, screen, digital) |
 | `print_cost_estimator_tool` | Full job cost breakdown: ink + plates + makeready + run cost |
 | `barcode_ink_coverage_tool` | Ink coverage % for Code 128, EAN-13, QR, and Data Matrix barcodes |
+| `preflight_check_tool` | Pre-press file validation — checks color mode, resolution, bleed, fonts, ink coverage, and transparency |
+| `substrate_simulator_tool` | Simulate CMYK color shifts on different paper substrates (dot gain, absorption, tint) |
 
 ### Utilities
 
@@ -229,6 +231,70 @@ Fuzzy matching accepts any format: `"485C"`, `"pantone 485"`, `"485 coated"`, `"
 { "value": 118.42, "from_unit": "lb_text", "to_unit": "gsm" }
 ```
 
+---
+
+### Preflight Check
+
+> *"Validate my file for offset printing: CMYK, 300 DPI, 3mm bleed, fonts embedded"*
+
+```json
+{
+  "status": "pass",
+  "checks": [
+    { "name": "color_mode", "status": "pass", "message": "CMYK is correct for offset." },
+    { "name": "resolution", "status": "pass", "message": "300 DPI meets the minimum of 300 DPI for offset." },
+    { "name": "bleed", "status": "pass", "message": "3.0 mm bleed meets the 3.0 mm minimum for offset." },
+    { "name": "fonts", "status": "pass", "message": "All fonts are embedded." },
+    { "name": "ink_coverage", "status": "pass", "message": "Total ink coverage 280% is within safe limits." },
+    { "name": "transparency", "status": "pass", "message": "No transparency detected." }
+  ],
+  "summary": "6 passed, 0 warnings, 0 failed out of 6 checks.",
+  "recommendation": "File is ready for production."
+}
+```
+
+Checks color mode, resolution, bleed, font embedding, total ink coverage, and transparency against the target print method (offset, digital, flexo, gravure, screen).
+
+| Check | Fail | Warning |
+|---|---|---|
+| Color mode | RGB/spot for offset/flexo/gravure/screen | RGB for digital |
+| Resolution | Below 75% of method minimum | Below method minimum |
+| Bleed | No bleed | Below method minimum |
+| Fonts | Not embedded | — |
+| Ink coverage | > 340% | > 300% |
+| Transparency | — | Present (needs flattening) |
+
+---
+
+### Substrate Simulation
+
+> *"How will CMYK 50/30/20/10 look on newsprint vs glossy coated?"*
+
+```json
+{
+  "original": { "c": 50, "m": 30, "y": 20, "k": 10, "hex": "#73A1B8" },
+  "simulated": { "c": 57.5, "m": 38.3, "y": 29.8, "k": 31.9, "hex": "#4A6B7A" },
+  "substrate": "newsprint",
+  "print_method": "offset",
+  "adjustments": { "dot_gain_applied": 30, "absorption_k_added": 16.2 },
+  "delta_e_from_original": 21.11,
+  "warning": "Severe color shift — this substrate may not be suitable for color-critical work."
+}
+```
+
+Six substrate profiles with different dot gain, absorption, and paper tint characteristics:
+
+| Substrate | Dot gain (offset) | Tint | Typical use |
+|---|---|---|---|
+| `glossy_coated` | 12% | None | Magazines, brochures |
+| `matte_coated` | 18% | Slight warm | Art books, reports |
+| `uncoated` | 22% | Warm | Letterheads, books |
+| `newsprint` | 30% | Yellow/gray | Newspapers, flyers |
+| `kraft` | 25% | Strong brown | Packaging, bags |
+| `recycled` | 25% | Slight gray | Eco-friendly prints |
+
+---
+
 ## Pantone Database
 
 The built-in database contains **2,415 Pantone colors**:
@@ -254,7 +320,7 @@ pytest tests/ -v
 ```
 
 ```
-65 passed in 0.15s
+108 passed in 0.19s
 ```
 
 ## License

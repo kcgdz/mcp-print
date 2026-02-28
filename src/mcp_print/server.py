@@ -15,7 +15,9 @@ from mcp_print.tools.cost import print_cost_estimate
 from mcp_print.tools.icc import icc_profile_info
 from mcp_print.tools.ink import ink_consumption
 from mcp_print.tools.paper import paper_weight_convert
+from mcp_print.tools.preflight import preflight_check
 from mcp_print.tools.spot import spot_color_separator
+from mcp_print.tools.substrate import substrate_simulator
 
 mcp = FastMCP(
     "mcp-print",
@@ -23,7 +25,7 @@ mcp = FastMCP(
         "Professional print & color workflow tools — 2400+ Pantone colors "
         "with fuzzy matching, CMYK/RGB conversion, ink/cost estimation, "
         "Delta E, ICC profiles, spot color separation, barcode coverage, "
-        "and paper weight conversion."
+        "paper weight conversion, preflight checks, and substrate simulation."
     ),
 )
 
@@ -277,6 +279,92 @@ def print_cost_estimator_tool(
         return print_cost_estimate(
             width_mm, height_mm, quantity, num_colors,
             paper_gsm, print_method, sides,  # type: ignore[arg-type]
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def preflight_check_tool(
+    color_mode: str,
+    resolution_dpi: float,
+    has_bleed: bool,
+    width_mm: float,
+    height_mm: float,
+    fonts_embedded: bool,
+    bleed_mm: float = 0.0,
+    total_ink_coverage_percent: float = 280.0,
+    has_transparency: bool = False,
+    target_method: str = "offset",
+) -> dict:
+    """Run pre-press preflight validation on declared file properties.
+
+    Checks color mode, resolution, bleed, font embedding, ink coverage,
+    and transparency against requirements for the target print method.
+
+    Args:
+        color_mode: File color mode — cmyk, rgb, grayscale, or spot.
+        resolution_dpi: Image resolution in DPI.
+        has_bleed: Whether the document includes bleed.
+        width_mm: Document width in millimeters.
+        height_mm: Document height in millimeters.
+        fonts_embedded: Whether all fonts are embedded.
+        bleed_mm: Bleed size in millimeters (default 0).
+        total_ink_coverage_percent: Maximum total ink coverage (default 280).
+        has_transparency: Whether the file contains transparency (default False).
+        target_method: Print method — offset, digital, flexo, gravure, or screen.
+
+    Returns:
+        Dict with status, checks list, summary, and recommendation.
+    """
+    try:
+        return preflight_check(
+            color_mode=color_mode,
+            resolution_dpi=resolution_dpi,
+            has_bleed=has_bleed,
+            width_mm=width_mm,
+            height_mm=height_mm,
+            fonts_embedded=fonts_embedded,
+            bleed_mm=bleed_mm,
+            total_ink_coverage_percent=total_ink_coverage_percent,
+            has_transparency=has_transparency,
+            target_method=target_method,
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def substrate_simulator_tool(
+    c: float,
+    m: float,
+    y: float,
+    k: float,
+    substrate: str = "uncoated",
+    print_method: str = "offset",
+) -> dict:
+    """Simulate how CMYK colors shift on different paper substrates.
+
+    Models dot gain (Murray-Davies), ink absorption, and paper tint for
+    six substrate types across offset, digital, and flexo methods.
+
+    Args:
+        c: Cyan (0-100).
+        m: Magenta (0-100).
+        y: Yellow (0-100).
+        k: Key/Black (0-100).
+        substrate: One of glossy_coated, matte_coated, uncoated, newsprint,
+                   kraft, or recycled (default uncoated).
+        print_method: One of offset, digital, or flexo (default offset).
+
+    Returns:
+        Dict with original, simulated CMYK+HEX, substrate info,
+        adjustments applied, delta_e_from_original, and warning.
+    """
+    try:
+        return substrate_simulator(
+            c=c, m=m, y=y, k=k,
+            substrate=substrate, print_method=print_method,
         )
     except ValueError as exc:
         return {"error": str(exc)}
