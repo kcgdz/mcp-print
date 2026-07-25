@@ -173,3 +173,70 @@ class TestRgbToCmyk:
         from mcp_print.tools.colors import rgb_to_cmyk
         with pytest.raises(ValueError, match="between 0 and 255"):
             rgb_to_cmyk(r=300, g=0, b=0)
+
+
+class TestCiede2000:
+    def test_reference_pair(self) -> None:
+        # Sharma et al. reference: Lab(50, 2.6772, -79.7751) vs (50, 0, -82.7485) -> 2.0425
+        from mcp_print.tools.colors import _delta_e_2000
+        de = _delta_e_2000((50, 2.6772, -79.7751), (50, 0, -82.7485))
+        assert abs(de - 2.0425) < 0.001
+
+    def test_identical_colors_zero(self) -> None:
+        from mcp_print.tools.colors import color_delta_e
+        result = color_delta_e(50, 40, 30, 20, 50, 40, 30, 20, method="ciede2000")
+        assert result["delta_e"] == 0.0
+        assert result["method"] == "ciede2000"
+
+    def test_ciede2000_differs_from_cie76(self) -> None:
+        from mcp_print.tools.colors import color_delta_e
+        de76 = color_delta_e(100, 0, 0, 0, 90, 10, 0, 0, method="cie76")
+        de2000 = color_delta_e(100, 0, 0, 0, 90, 10, 0, 0, method="ciede2000")
+        assert de76["delta_e"] != de2000["delta_e"]
+
+    def test_default_is_cie76(self) -> None:
+        from mcp_print.tools.colors import color_delta_e
+        result = color_delta_e(10, 20, 30, 40, 15, 25, 35, 45)
+        assert result["method"] == "cie76"
+
+    def test_unknown_method_raises(self) -> None:
+        import pytest
+        from mcp_print.tools.colors import color_delta_e
+        with pytest.raises(ValueError, match="Unknown method"):
+            color_delta_e(0, 0, 0, 0, 0, 0, 0, 0, method="cmc")
+
+
+class TestLabConvert:
+    def test_hex_to_lab_white(self) -> None:
+        from mcp_print.tools.colors import lab_convert
+        result = lab_convert(hex_color="#FFFFFF")
+        assert abs(result["lab"]["l"] - 100) < 0.5
+        assert abs(result["lab"]["a"]) < 0.5
+        assert abs(result["lab"]["b"]) < 0.5
+
+    def test_lab_to_rgb_roundtrip(self) -> None:
+        from mcp_print.tools.colors import lab_convert
+        first = lab_convert(hex_color="#DA291C")
+        lab = first["lab"]
+        back = lab_convert(l=lab["l"], a=lab["a"], b=lab["b"])
+        assert abs(back["rgb"]["r"] - 0xDA) <= 2
+        assert abs(back["rgb"]["g"] - 0x29) <= 2
+        assert abs(back["rgb"]["b"] - 0x1C) <= 2
+
+    def test_cmyk_input(self) -> None:
+        from mcp_print.tools.colors import lab_convert
+        result = lab_convert(c=0, m=0, y=0, k=100)
+        assert result["lab"]["l"] < 5
+        assert result["cmyk"]["k"] == 100
+
+    def test_no_input_raises(self) -> None:
+        import pytest
+        from mcp_print.tools.colors import lab_convert
+        with pytest.raises(ValueError, match="exactly one"):
+            lab_convert()
+
+    def test_conflicting_inputs_raise(self) -> None:
+        import pytest
+        from mcp_print.tools.colors import lab_convert
+        with pytest.raises(ValueError, match="exactly one"):
+            lab_convert(l=50, a=0, b=0, hex_color="#FF0000")

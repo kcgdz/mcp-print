@@ -11,17 +11,17 @@ class TestPrintCostEstimate:
             width_mm=210, height_mm=297, quantity=5000,
             num_colors=4, paper_gsm=120, print_method="offset",
         )
-        assert result["total_cost_usd"] > 0
-        assert result["cost_per_unit_usd"] > 0
-        assert result["ink_cost_usd"] >= 0
-        assert result["setup_cost_usd"] >= 0
+        assert result["total_cost"] > 0
+        assert result["cost_per_unit"] > 0
+        assert result["ink_cost"] >= 0
+        assert result["setup_cost"] >= 0
         bd = result["breakdown"]
         assert bd["ink"] >= 0
         assert bd["plates"] >= 0
         assert bd["makeready"] >= 0
         assert bd["run_cost"] >= 0
         # Total should equal sum of breakdown
-        assert abs(result["total_cost_usd"] - sum(bd.values())) < 0.02
+        assert abs(result["total_cost"] - sum(bd.values())) < 0.02
 
     def test_digital_no_setup(self) -> None:
         result = print_cost_estimate(
@@ -40,7 +40,7 @@ class TestPrintCostEstimate:
             width_mm=210, height_mm=297, quantity=1000,
             num_colors=4, paper_gsm=100, print_method="offset", sides=2,
         )
-        assert two["total_cost_usd"] > one["total_cost_usd"]
+        assert two["total_cost"] > one["total_cost"]
 
     def test_heavier_paper_costs_more(self) -> None:
         light = print_cost_estimate(
@@ -51,7 +51,7 @@ class TestPrintCostEstimate:
             width_mm=210, height_mm=297, quantity=1000,
             num_colors=4, paper_gsm=300, print_method="offset",
         )
-        assert heavy["total_cost_usd"] > light["total_cost_usd"]
+        assert heavy["total_cost"] > light["total_cost"]
 
     def test_invalid_sides_raises(self) -> None:
         with pytest.raises(ValueError, match="sides must be 1 or 2"):

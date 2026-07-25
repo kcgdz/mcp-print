@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/kcgdz/mcp-print/actions/workflows/ci.yml/badge.svg)](https://github.com/kcgdz/mcp-print/actions/workflows/ci.yml)
 
-2400+ Pantone colors &bull; CMYK/RGB conversion &bull; Ink & cost estimation &bull; ICC profiles &bull; Spot color separation &bull; Barcode coverage &bull; Delta E &bull; Paper weights &bull; Preflight checks &bull; Substrate simulation &bull; Imposition &bull; Booklet & spine calculation
+2400+ Pantone colors &bull; CMYK/RGB conversion &bull; Ink & cost estimation &bull; ICC profiles &bull; Spot color separation &bull; Barcode coverage &bull; Delta E &bull; Paper weights &bull; Preflight checks &bull; Substrate simulation &bull; Imposition &bull; Booklet & spine calculation &bull; Lab conversion &bull; CIEDE2000 &bull; TAC/GCR &bull; Dot gain compensation &bull; PDF preflight &bull; Job quoting
 
 **Works 100% offline &mdash; no API keys needed**
 
@@ -53,7 +53,7 @@ Add to your Claude Code MCP config (`~/.claude/settings.json` or project `.mcp.j
 }
 ```
 
-Restart Claude Code — all fifteen tools will be available immediately.
+Restart Claude Code — all twenty tools will be available immediately.
 
 ## Tools
 
@@ -65,7 +65,8 @@ Restart Claude Code — all fifteen tools will be available immediately.
 | `pantone_search_tool` | Find the closest Pantone colors to any HEX or CMYK value (top N matches by Delta E) |
 | `cmyk_to_rgb_tool` | Convert CMYK values (0-100) to RGB (0-255) + HEX |
 | `rgb_to_cmyk_tool` | Convert RGB (0-255) or HEX to CMYK values (0-100) |
-| `color_delta_e_tool` | Calculate Delta E (CIE76) between two CMYK colors with quality interpretation |
+| `color_delta_e_tool` | Calculate Delta E (CIEDE2000 or CIE76) between two CMYK colors with quality interpretation |
+| `lab_convert_tool` | Convert between CIELAB (spectrophotometer readings), CMYK, RGB, and HEX |
 | `spot_color_separator_tool` | Given a list of design colors, recommend which should be spot vs process |
 
 ### Print Production
@@ -79,6 +80,10 @@ Restart Claude Code — all fifteen tools will be available immediately.
 | `substrate_simulator_tool` | Simulate CMYK color shifts on different paper substrates (dot gain, absorption, tint) |
 | `imposition_calculator_tool` | N-up imposition — how many pieces fit on a press sheet, sheets needed, utilization % |
 | `booklet_calculator_tool` | Signature count, page rounding, and spine thickness for saddle-stitch or perfect-bound booklets |
+| `dot_gain_compensation_tool` | File CMYK values that hit target tints on press — inverse of substrate simulation |
+| `ink_limit_check_tool` | Total ink coverage (TAC) check with automatic GCR reduction |
+| `full_job_quote_tool` | Imposition + sheet-based costing in one call, with local prices in any currency |
+| `pdf_preflight_tool` | Preflight a real PDF file: trim/bleed boxes, font embedding, image color spaces (`pip install mcp-print[pdf]`) |
 
 ### Utilities
 
@@ -149,16 +154,20 @@ Fuzzy matching accepts any format: `"485C"`, `"pantone 485"`, `"485 coated"`, `"
 
 ```json
 {
-  "total_cost_usd": 628.14,
-  "cost_per_unit_usd": 0.1256,
+  "total_cost": 628.14,
+  "cost_per_unit": 0.1256,
+  "currency": "USD",
   "breakdown": {
     "ink": 11.34,
     "plates": 280.00,
     "makeready": 200.00,
-    "run_cost": 136.80
+    "run_cost": 136.80,
+    "paper": 0.0
   }
 }
 ```
+
+Prices default to USD industry averages — pass your own ink/plate/makeready/run/paper prices in any currency for a localized quote.
 
 ---
 
@@ -363,7 +372,7 @@ pytest tests/ -v
 ```
 
 ```
-137 passed in 0.20s
+173 passed in 0.61s
 ```
 
 ## Acknowledgements

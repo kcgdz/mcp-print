@@ -45,7 +45,14 @@ class PantoneResult(TypedDict):
 
 class DeltaEResult(TypedDict):
     delta_e: float
+    method: str
     interpretation: str
+
+
+class LabResult(TypedDict):
+    l: float
+    a: float
+    b: float
 
 
 class PantoneSearchResult(TypedDict):
@@ -439,21 +446,90 @@ def _cmyk_to_lab(c: float, m: float, y: float, k: float) -> tuple[float, float, 
     return _xyz_to_lab(*_cmyk_to_xyz(c, m, y, k))
 
 
+def _delta_e_2000(
+    lab1: tuple[float, float, float],
+    lab2: tuple[float, float, float],
+) -> float:
+    """CIEDE2000 color difference (kL = kC = kH = 1)."""
+    l1, a1, b1 = lab1
+    l2, a2, b2 = lab2
+
+    c1 = math.hypot(a1, b1)
+    c2 = math.hypot(a2, b2)
+    c_bar = (c1 + c2) / 2
+    g = 0.5 * (1 - math.sqrt(c_bar ** 7 / (c_bar ** 7 + 25 ** 7)))
+    a1p, a2p = a1 * (1 + g), a2 * (1 + g)
+    c1p, c2p = math.hypot(a1p, b1), math.hypot(a2p, b2)
+
+    h1p = math.degrees(math.atan2(b1, a1p)) % 360 if (a1p or b1) else 0.0
+    h2p = math.degrees(math.atan2(b2, a2p)) % 360 if (a2p or b2) else 0.0
+
+    dl = l2 - l1
+    dc = c2p - c1p
+    if c1p * c2p == 0:
+        dhp = 0.0
+    else:
+        diff = h2p - h1p
+        if abs(diff) <= 180:
+            dhp = diff
+        elif diff > 180:
+            dhp = diff - 360
+        else:
+            dhp = diff + 360
+    dh = 2 * math.sqrt(c1p * c2p) * math.sin(math.radians(dhp) / 2)
+
+    l_bar = (l1 + l2) / 2
+    c_bar_p = (c1p + c2p) / 2
+    if c1p * c2p == 0:
+        h_bar = h1p + h2p
+    elif abs(h1p - h2p) <= 180:
+        h_bar = (h1p + h2p) / 2
+    elif h1p + h2p < 360:
+        h_bar = (h1p + h2p + 360) / 2
+    else:
+        h_bar = (h1p + h2p - 360) / 2
+
+    t = (
+        1
+        - 0.17 * math.cos(math.radians(h_bar - 30))
+        + 0.24 * math.cos(math.radians(2 * h_bar))
+        + 0.32 * math.cos(math.radians(3 * h_bar + 6))
+        - 0.20 * math.cos(math.radians(4 * h_bar - 63))
+    )
+    sl = 1 + 0.015 * (l_bar - 50) ** 2 / math.sqrt(20 + (l_bar - 50) ** 2)
+    sc = 1 + 0.045 * c_bar_p
+    sh = 1 + 0.015 * c_bar_p * t
+    d_theta = 30 * math.exp(-(((h_bar - 275) / 25) ** 2))
+    rc = 2 * math.sqrt(c_bar_p ** 7 / (c_bar_p ** 7 + 25 ** 7))
+    rt = -rc * math.sin(math.radians(2 * d_theta))
+
+    return math.sqrt(
+        (dl / sl) ** 2
+        + (dc / sc) ** 2
+        + (dh / sh) ** 2
+        + rt * (dc / sc) * (dh / sh)
+    )
+
+
 def color_delta_e(
     c1: float, m1: float, y1: float, k1: float,
     c2: float, m2: float, y2: float, k2: float,
+    method: str = "cie76",
 ) -> DeltaEResult:
-    """Calculate Delta E (CIE76) between two CMYK colors.
+    """Calculate Delta E between two CMYK colors.
 
     Args:
         c1, m1, y1, k1: First color CMYK values (0-100 each).
         c2, m2, y2, k2: Second color CMYK values (0-100 each).
+        method: ``cie76`` (fast, legacy) or ``ciede2000``
+            (industry standard, perceptually accurate).
 
     Returns:
-        Dict with ``delta_e`` and human-readable ``interpretation``.
+        Dict with ``delta_e``, ``method``, and human-readable
+        ``interpretation``.
 
     Raises:
-        ValueError: If any CMYK value is outside 0-100.
+        ValueError: If any CMYK value is outside 0-100 or method is unknown.
     """
     for name, val in [
         ("c1", c1), ("m1", m1), ("y1", y1), ("k1", k1),
@@ -462,9 +538,16 @@ def color_delta_e(
         if not (0 <= val <= 100):
             raise ValueError(f"{name} must be between 0 and 100, got {val}")
 
-    l1, a1, b1 = _cmyk_to_lab(c1, m1, y1, k1)
-    l2, a2, b2 = _cmyk_to_lab(c2, m2, y2, k2)
-    de = math.sqrt((l2 - l1) ** 2 + (a2 - a1) ** 2 + (b2 - b1) ** 2)
+    meth = method.lower()
+    if meth not in ("cie76", "ciede2000"):
+        raise ValueError(f"Unknown method: {method!r}. Choose from: cie76, ciede2000")
+
+    lab1 = _cmyk_to_lab(c1, m1, y1, k1)
+    lab2 = _cmyk_to_lab(c2, m2, y2, k2)
+    if meth == "ciede2000":
+        de = _delta_e_2000(lab1, lab2)
+    else:
+        de = math.sqrt(sum((a - b) ** 2 for a, b in zip(lab1, lab2)))
     de = round(de, 2)
 
     if de < 1:
@@ -476,4 +559,106 @@ def color_delta_e(
     else:
         interp = "poor — obvious difference"
 
-    return {"delta_e": de, "interpretation": interp}
+    return {"delta_e": de, "method": meth, "interpretation": interp}
+
+
+# ---------------------------------------------------------------------------
+# Lab conversion public API
+# ---------------------------------------------------------------------------
+
+
+def _lab_to_rgb(l_star: float, a_star: float, b_star: float) -> tuple[int, int, int]:
+    """Convert CIELAB (D65) to sRGB (0-255), clamped to gamut."""
+    fy = (l_star + 16) / 116
+    fx = fy + a_star / 500
+    fz = fy - b_star / 200
+    delta = 6 / 29
+
+    def f_inv(t: float) -> float:
+        if t > delta:
+            return t ** 3
+        return 3 * delta ** 2 * (t - 4 / 29)
+
+    xn, yn, zn = 0.95047, 1.00000, 1.08883
+    x, y, z = f_inv(fx) * xn, f_inv(fy) * yn, f_inv(fz) * zn
+
+    rl = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z
+    gl = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z
+    bl = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z
+
+    def gamma(v: float) -> int:
+        v = max(0.0, min(1.0, v))
+        s = 12.92 * v if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055
+        return round(max(0.0, min(1.0, s)) * 255)
+
+    return gamma(rl), gamma(gl), gamma(bl)
+
+
+def lab_convert(
+    *,
+    l: float | None = None,
+    a: float | None = None,
+    b: float | None = None,
+    c: float | None = None,
+    m: float | None = None,
+    y: float | None = None,
+    k: float | None = None,
+    hex_color: str | None = None,
+) -> dict:
+    """Convert between CIELAB and CMYK/RGB/HEX.
+
+    Provide exactly one input: Lab (l, a, b), CMYK (c, m, y, k), or
+    hex_color. Returns the color expressed in every space.
+
+    Args:
+        l: Lightness L* (0-100).
+        a: a* axis (green-red, typically -128 to 127).
+        b: b* axis (blue-yellow, typically -128 to 127).
+        c: Cyan (0-100).
+        m: Magenta (0-100).
+        y: Yellow (0-100).
+        k: Key/Black (0-100).
+        hex_color: HEX color string.
+
+    Returns:
+        Dict with ``lab``, ``cmyk``, ``rgb``, ``hex``, and ``source``.
+
+    Raises:
+        ValueError: If no input, conflicting inputs, or out-of-range values.
+    """
+    has_lab = all(v is not None for v in (l, a, b))
+    has_cmyk = all(v is not None for v in (c, m, y, k))
+    has_hex = hex_color is not None
+
+    if sum([has_lab, has_cmyk, has_hex]) != 1:
+        raise ValueError(
+            "Provide exactly one input: Lab (l, a, b), CMYK (c, m, y, k), or hex_color."
+        )
+
+    if has_lab:
+        assert l is not None and a is not None and b is not None
+        if not (0 <= l <= 100):
+            raise ValueError(f"l must be between 0 and 100, got {l}")
+        r_v, g_v, b_v = _lab_to_rgb(l, a, b)
+        lab = (round(l, 2), round(a, 2), round(b, 2))
+        source = "lab"
+    elif has_cmyk:
+        assert c is not None and m is not None and y is not None and k is not None
+        rgb = cmyk_to_rgb(c, m, y, k)
+        r_v, g_v, b_v = rgb["r"], rgb["g"], rgb["b"]
+        lab = tuple(round(v, 2) for v in _cmyk_to_lab(c, m, y, k))
+        source = f"cmyk({c},{m},{y},{k})"
+    else:
+        assert hex_color is not None
+        r_v, g_v, b_v = _hex_to_rgb(hex_color)
+        lab = tuple(round(v, 2) for v in _rgb_to_lab(r_v, g_v, b_v))
+        source = f"hex {hex_color}"
+
+    cmyk = rgb_to_cmyk(r=r_v, g=g_v, b=b_v)
+    return {
+        "lab": {"l": lab[0], "a": lab[1], "b": lab[2]},
+        "cmyk": {"c": cmyk["c"], "m": cmyk["m"], "y": cmyk["y"], "k": cmyk["k"]},
+        "rgb": {"r": r_v, "g": g_v, "b": b_v},
+        "hex": f"#{r_v:02X}{g_v:02X}{b_v:02X}",
+        "source": source,
+    }

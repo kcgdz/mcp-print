@@ -9,16 +9,21 @@ from mcp_print.tools.booklet import booklet_calculator
 from mcp_print.tools.colors import (
     cmyk_to_rgb,
     color_delta_e,
+    lab_convert,
     pantone_search,
     pantone_to_cmyk,
     rgb_to_cmyk,
 )
 from mcp_print.tools.cost import print_cost_estimate
+from mcp_print.tools.dotgain import dot_gain_compensation
 from mcp_print.tools.icc import icc_profile_info
 from mcp_print.tools.imposition import imposition_calculator
 from mcp_print.tools.ink import ink_consumption
+from mcp_print.tools.inklimit import ink_limit_check
 from mcp_print.tools.paper import paper_weight_convert
+from mcp_print.tools.pdfcheck import pdf_preflight
 from mcp_print.tools.preflight import preflight_check
+from mcp_print.tools.quote import full_job_quote
 from mcp_print.tools.spot import spot_color_separator
 from mcp_print.tools.substrate import substrate_simulator
 
@@ -26,9 +31,12 @@ mcp = FastMCP(
     "mcp-print",
     instructions=(
         "Professional print & color workflow tools — 2400+ Pantone colors "
-        "with fuzzy matching, CMYK/RGB conversion, ink/cost estimation, "
-        "Delta E, ICC profiles, spot color separation, barcode coverage, "
-        "paper weight conversion, preflight checks, and substrate simulation."
+        "with fuzzy matching, CMYK/RGB/Lab conversion, Delta E (CIEDE2000), "
+        "ink/cost estimation, full job quoting, imposition, booklet/spine "
+        "calculation, dot gain compensation, TAC/GCR ink limiting, ICC "
+        "profiles, spot color separation, barcode coverage, paper weights, "
+        "preflight checks (declared values or real PDF files), and "
+        "substrate simulation."
     ),
 )
 
@@ -137,8 +145,9 @@ def ink_consumption_tool(
 def color_delta_e_tool(
     c1: float, m1: float, y1: float, k1: float,
     c2: float, m2: float, y2: float, k2: float,
+    method: str = "ciede2000",
 ) -> dict:
-    """Calculate the Delta E (CIE76) color difference between two CMYK colors.
+    """Calculate the Delta E color difference between two CMYK colors.
 
     Args:
         c1: First color cyan (0-100).
@@ -149,12 +158,13 @@ def color_delta_e_tool(
         m2: Second color magenta (0-100).
         y2: Second color yellow (0-100).
         k2: Second color black (0-100).
+        method: ciede2000 (industry standard, default) or cie76 (legacy).
 
     Returns:
-        Dict with delta_e value and human-readable interpretation.
+        Dict with delta_e value, method, and human-readable interpretation.
     """
     try:
-        return color_delta_e(c1, m1, y1, k1, c2, m2, y2, k2)
+        return color_delta_e(c1, m1, y1, k1, c2, m2, y2, k2, method=method)
     except ValueError as exc:
         return {"error": str(exc)}
 
@@ -488,6 +498,260 @@ def booklet_calculator_tool(
         )
     except ValueError as exc:
         return {"error": str(exc)}
+
+
+@mcp.tool()
+def lab_convert_tool(
+    l: float | None = None,
+    a: float | None = None,
+    b: float | None = None,
+    c: float | None = None,
+    m: float | None = None,
+    y: float | None = None,
+    k: float | None = None,
+    hex_color: str | None = None,
+) -> dict:
+    """Convert between CIELAB and CMYK/RGB/HEX color spaces.
+
+    Provide exactly one input: Lab (l, a, b) — e.g. from a
+    spectrophotometer reading — OR CMYK (c, m, y, k) OR hex_color.
+    Returns the color in every space.
+
+    Args:
+        l: Lightness L* (0-100). Optional.
+        a: a* green-red axis. Optional.
+        b: b* blue-yellow axis. Optional.
+        c: Cyan (0-100). Optional.
+        m: Magenta (0-100). Optional.
+        y: Yellow (0-100). Optional.
+        k: Key/Black (0-100). Optional.
+        hex_color: HEX color string. Optional.
+
+    Returns:
+        Dict with lab, cmyk, rgb, hex, and source.
+    """
+    try:
+        return lab_convert(l=l, a=a, b=b, c=c, m=m, y=y, k=k, hex_color=hex_color)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def dot_gain_compensation_tool(
+    c: float,
+    m: float,
+    y: float,
+    k: float,
+    dot_gain_percent: float | None = None,
+    substrate: str | None = None,
+    print_method: str = "offset",
+) -> dict:
+    """Calculate file CMYK values that hit the desired tints on press.
+
+    Inverse of substrate simulation: give the CMYK you want to SEE
+    printed, get the CMYK to put in the file so dot gain lands on target.
+    Provide either dot_gain_percent OR a substrate name.
+
+    Args:
+        c: Target cyan on press (0-100).
+        m: Target magenta on press (0-100).
+        y: Target yellow on press (0-100).
+        k: Target black on press (0-100).
+        dot_gain_percent: Known midtone dot gain (0-60). Optional.
+        substrate: glossy_coated, matte_coated, uncoated, newsprint,
+            kraft, or recycled. Optional.
+        print_method: offset, digital, or flexo (used with substrate).
+
+    Returns:
+        Dict with compensated CMYK, target echo, gain used, and source.
+    """
+    try:
+        return dot_gain_compensation(
+            c=c, m=m, y=y, k=k,
+            dot_gain_percent=dot_gain_percent,
+            substrate=substrate,
+            print_method=print_method,
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def ink_limit_check_tool(
+    c: float,
+    m: float,
+    y: float,
+    k: float,
+    tac_limit: float | None = None,
+    print_condition: str = "offset_coated",
+) -> dict:
+    """Check total ink coverage (TAC) and reduce it with GCR if over limit.
+
+    GCR moves the shared gray component of CMY into K — same visual
+    color, less total ink, faster drying.
+
+    Args:
+        c: Cyan (0-100).
+        m: Magenta (0-100).
+        y: Yellow (0-100).
+        k: Key/Black (0-100).
+        tac_limit: Explicit TAC limit (100-400). Optional; overrides
+            print_condition.
+        print_condition: offset_coated, offset_uncoated, digital,
+            newsprint, flexo, gravure, or screen (default offset_coated).
+
+    Returns:
+        Dict with original/adjusted CMYK, TAC values, limit,
+        within_limit flag, gcr_applied, and note.
+    """
+    try:
+        return ink_limit_check(
+            c, m, y, k, tac_limit=tac_limit, print_condition=print_condition,
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def full_job_quote_tool(
+    sheet_width_mm: float,
+    sheet_height_mm: float,
+    piece_width_mm: float,
+    piece_height_mm: float,
+    quantity: int,
+    num_colors: int,
+    paper_gsm: float,
+    print_method: str,
+    sides: int = 1,
+    bleed_mm: float = 3.0,
+    waste_percent: float = 5.0,
+    currency: str = "USD",
+    ink_price_per_kg: float | None = None,
+    plate_price: float | None = None,
+    makeready_price: float | None = None,
+    run_price_per_1000: float | None = None,
+    paper_price_per_sheet: float = 0.0,
+) -> dict:
+    """Complete print job quote: imposition + sheet-based costing in one call.
+
+    Calculates the n-up layout first, then costs the actual press sheets
+    (including waste) — the way a real print shop quotes. Pass local
+    prices in any currency for a localized quote.
+
+    Args:
+        sheet_width_mm: Press sheet width in millimeters.
+        sheet_height_mm: Press sheet height in millimeters.
+        piece_width_mm: Finished piece width in millimeters.
+        piece_height_mm: Finished piece height in millimeters.
+        quantity: Number of finished pieces required.
+        num_colors: Number of ink colors (e.g. 4 for CMYK).
+        paper_gsm: Paper weight in GSM.
+        print_method: offset, flexo, gravure, screen, or digital.
+        sides: Printed sides (1 or 2, default 1).
+        bleed_mm: Bleed per piece side (default 3).
+        waste_percent: Extra sheets for waste (default 5).
+        currency: Currency label (default USD).
+        ink_price_per_kg: Override ink price per kg. Optional.
+        plate_price: Override plate price per color. Optional.
+        makeready_price: Override makeready price. Optional.
+        run_price_per_1000: Override run price per 1000 sheets. Optional.
+        paper_price_per_sheet: Paper price per press sheet (default 0).
+
+    Returns:
+        Dict with imposition, cost breakdown, cost_per_piece, and summary.
+    """
+    try:
+        return full_job_quote(
+            sheet_width_mm=sheet_width_mm,
+            sheet_height_mm=sheet_height_mm,
+            piece_width_mm=piece_width_mm,
+            piece_height_mm=piece_height_mm,
+            quantity=quantity,
+            num_colors=num_colors,
+            paper_gsm=paper_gsm,
+            print_method=print_method,
+            sides=sides,
+            bleed_mm=bleed_mm,
+            waste_percent=waste_percent,
+            currency=currency,
+            ink_price_per_kg=ink_price_per_kg,
+            plate_price=plate_price,
+            makeready_price=makeready_price,
+            run_price_per_1000=run_price_per_1000,
+            paper_price_per_sheet=paper_price_per_sheet,
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def pdf_preflight_tool(file_path: str, target_method: str = "offset") -> dict:
+    """Run preflight checks on a real PDF file (requires pypdf).
+
+    Reads page geometry (trim/bleed boxes), font embedding, and image
+    color spaces directly from the file — no declared values needed.
+    Install support with: pip install mcp-print[pdf]
+
+    Args:
+        file_path: Path to the PDF file.
+        target_method: offset, digital, flexo, gravure, or screen.
+
+    Returns:
+        Dict with status, page_count, checks, per-page details,
+        summary, and recommendation.
+    """
+    try:
+        return pdf_preflight(file_path, target_method)
+    except (ValueError, FileNotFoundError) as exc:
+        return {"error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Resources & prompts
+# ---------------------------------------------------------------------------
+
+
+@mcp.resource("mcp-print://pantone-database")
+def pantone_database_resource() -> str:
+    """The full Pantone color database (2400+ colors) as JSON."""
+    import json
+
+    from mcp_print.tools.colors import _load_db
+
+    return json.dumps(_load_db(), ensure_ascii=False)
+
+
+@mcp.resource("mcp-print://substrate-profiles")
+def substrate_profiles_resource() -> str:
+    """Substrate profiles (dot gain, absorption, tint) as JSON."""
+    import json
+
+    from mcp_print.tools.substrate import _SUBSTRATES
+
+    return json.dumps(_SUBSTRATES, ensure_ascii=False)
+
+
+@mcp.prompt()
+def preflight_job(description: str) -> str:
+    """Guide a full preflight review of a print job."""
+    return (
+        f"Preflight this print job and report production readiness:\n\n{description}\n\n"
+        "1. Run preflight_check_tool (or pdf_preflight_tool if a PDF path is given).\n"
+        "2. Check total ink coverage with ink_limit_check_tool for the target stock.\n"
+        "3. If a substrate is mentioned, simulate color shift with substrate_simulator_tool.\n"
+        "4. Summarize: pass/fail per check, required fixes, and final verdict."
+    )
+
+
+@mcp.prompt()
+def quote_job(description: str) -> str:
+    """Produce a complete quote for a print job."""
+    return (
+        f"Prepare a complete print quote for this job:\n\n{description}\n\n"
+        "1. Use full_job_quote_tool with the job's dimensions, quantity, and method.\n"
+        "2. If prices are given in a local currency, pass them as overrides.\n"
+        "3. Present the imposition layout, cost breakdown, and per-piece price clearly."
+    )
 
 
 # ---------------------------------------------------------------------------
