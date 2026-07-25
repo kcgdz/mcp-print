@@ -51,7 +51,7 @@ Add to your Claude Code MCP config (`~/.claude/settings.json` or project `.mcp.j
 }
 ```
 
-Restart Claude Code — all twelve tools will be available immediately.
+Restart Claude Code — all fifteen tools will be available immediately.
 
 ## Tools
 
@@ -62,6 +62,7 @@ Restart Claude Code — all twelve tools will be available immediately.
 | `pantone_to_cmyk_tool` | Convert a Pantone name to CMYK + HEX. Fuzzy matching — `"485C"`, `"pantone 485"`, `"Warm Red"` all work |
 | `pantone_search_tool` | Find the closest Pantone colors to any HEX or CMYK value (top N matches by Delta E) |
 | `cmyk_to_rgb_tool` | Convert CMYK values (0-100) to RGB (0-255) + HEX |
+| `rgb_to_cmyk_tool` | Convert RGB (0-255) or HEX to CMYK values (0-100) |
 | `color_delta_e_tool` | Calculate Delta E (CIE76) between two CMYK colors with quality interpretation |
 | `spot_color_separator_tool` | Given a list of design colors, recommend which should be spot vs process |
 
@@ -74,6 +75,8 @@ Restart Claude Code — all twelve tools will be available immediately.
 | `barcode_ink_coverage_tool` | Ink coverage % for Code 128, EAN-13, QR, and Data Matrix barcodes |
 | `preflight_check_tool` | Pre-press file validation — checks color mode, resolution, bleed, fonts, ink coverage, and transparency |
 | `substrate_simulator_tool` | Simulate CMYK color shifts on different paper substrates (dot gain, absorption, tint) |
+| `imposition_calculator_tool` | N-up imposition — how many pieces fit on a press sheet, sheets needed, utilization % |
+| `booklet_calculator_tool` | Signature count, page rounding, and spine thickness for saddle-stitch or perfect-bound booklets |
 
 ### Utilities
 
@@ -292,6 +295,44 @@ Six substrate profiles with different dot gain, absorption, and paper tint chara
 | `newsprint` | 30% | Yellow/gray | Newspapers, flyers |
 | `kraft` | 25% | Strong brown | Packaging, bags |
 | `recycled` | 25% | Slight gray | Eco-friendly prints |
+
+---
+
+### Imposition (N-up)
+
+> *"How many A4 flyers fit on a 70x100 sheet, and how many sheets for 10,000?"*
+
+```json
+{
+  "ups_per_sheet": 9,
+  "layout": "3 x 3",
+  "orientation": "normal",
+  "sheets_needed": 1112,
+  "sheets_with_waste": 1168,
+  "sheet_utilization_percent": 84.1
+}
+```
+
+Accounts for bleed, cutting gaps, and the gripper margin; tries both piece orientations and picks the best.
+
+---
+
+### Booklet & Spine Calculation
+
+> *"48-page booklet on 90gsm uncoated with a 300gsm cover — signatures and spine?"*
+
+```json
+{
+  "total_pages": 48,
+  "signatures": 3,
+  "total_sheets": 12,
+  "spine_thickness_mm": 3.24,
+  "binding": "saddle_stitch",
+  "binding_note": "Suitable for saddle stitching."
+}
+```
+
+Rounds pages to a multiple of 4, warns when the page count doesn't suit the chosen binding (saddle stitch > 64 pages, perfect bound < 3 mm spine).
 
 ---
 
