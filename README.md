@@ -15,6 +15,8 @@
 
 [Install](#install) &bull; [Configure](#configure-with-claude-code) &bull; [Tools](#tools) &bull; [Examples](#usage-examples) &bull; [Contributing](#development)
 
+Backed by [optiraj.com](https://optiraj.com)
+
 </div>
 
 ---
@@ -363,6 +365,10 @@ pytest tests/ -v
 ```
 137 passed in 0.20s
 ```
+
+## Acknowledgements
+
+Development is supported by [Optiraj](https://optiraj.com).
 
 ## License
 
