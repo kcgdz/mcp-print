@@ -15,7 +15,7 @@
 
 [Install](#install) &bull; [Configure](#configure-with-claude-code) &bull; [Tools](#tools) &bull; [Examples](#usage-examples) &bull; [Contributing](#development)
 
-Backed by [optiraj.com](https://optiraj.com)
+Backed by [optiraj.com](https://optiraj.com) — SaaS for print professionals
 
 </div>
 
@@ -368,7 +368,7 @@ pytest tests/ -v
 
 ## Acknowledgements
 
-Development is supported by [Optiraj](https://optiraj.com).
+Development is supported by [Optiraj](https://optiraj.com) — a SaaS platform for print professionals. Optiraj sponsors open-source tooling that makes professional print knowledge freely accessible to the community.
 
 ## License
 
