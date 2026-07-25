@@ -27,6 +27,14 @@ class RGBResult(TypedDict):
     hex: str
 
 
+class CMYKResult(TypedDict):
+    c: float
+    m: float
+    y: float
+    k: float
+    hex: str
+
+
 class PantoneResult(TypedDict):
     name: str
     c: float
@@ -316,6 +324,55 @@ def cmyk_to_rgb(c: float, m: float, y: float, k: float) -> RGBResult:
     g = int(_clamp(g, 0, 255))
     b = int(_clamp(b, 0, 255))
     return {"r": r, "g": g, "b": b, "hex": f"#{r:02X}{g:02X}{b:02X}"}
+
+
+def rgb_to_cmyk(
+    r: int | None = None,
+    g: int | None = None,
+    b: int | None = None,
+    hex_color: str | None = None,
+) -> CMYKResult:
+    """Convert RGB (0-255) or a HEX string to CMYK (0-100 per channel).
+
+    Provide **either** ``hex_color`` or all three RGB values.
+
+    Args:
+        r: Red (0-255).
+        g: Green (0-255).
+        b: Blue (0-255).
+        hex_color: HEX color string (e.g. ``"#DA291C"``).
+
+    Returns:
+        Dict with ``c``, ``m``, ``y``, ``k`` (0-100) and the ``hex`` echo.
+
+    Raises:
+        ValueError: If inputs are missing or out of range.
+    """
+    if hex_color is not None:
+        r, g, b = _hex_to_rgb(hex_color)
+    elif r is None or g is None or b is None:
+        raise ValueError("Provide either hex_color or all three RGB values (r, g, b).")
+
+    for name, val in [("r", r), ("g", g), ("b", b)]:
+        if not (0 <= val <= 255):
+            raise ValueError(f"{name} must be between 0 and 255, got {val}")
+
+    r_f, g_f, b_f = r / 255, g / 255, b / 255
+    k_f = 1 - max(r_f, g_f, b_f)
+    if k_f >= 1.0:
+        c_f = m_f = y_f = 0.0
+    else:
+        c_f = (1 - r_f - k_f) / (1 - k_f)
+        m_f = (1 - g_f - k_f) / (1 - k_f)
+        y_f = (1 - b_f - k_f) / (1 - k_f)
+
+    return {
+        "c": round(c_f * 100, 1),
+        "m": round(m_f * 100, 1),
+        "y": round(y_f * 100, 1),
+        "k": round(k_f * 100, 1),
+        "hex": f"#{r:02X}{g:02X}{b:02X}",
+    }
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:

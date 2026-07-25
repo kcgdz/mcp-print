@@ -126,3 +126,50 @@ class TestPantoneSearch:
     def test_invalid_hex_raises(self) -> None:
         with pytest.raises(ValueError, match="Invalid hex"):
             pantone_search(hex_color="#ZZZZZZ")
+
+
+class TestRgbToCmyk:
+    def test_pure_red(self) -> None:
+        from mcp_print.tools.colors import rgb_to_cmyk
+        result = rgb_to_cmyk(r=255, g=0, b=0)
+        assert result["c"] == 0
+        assert result["m"] == 100
+        assert result["y"] == 100
+        assert result["k"] == 0
+
+    def test_black(self) -> None:
+        from mcp_print.tools.colors import rgb_to_cmyk
+        result = rgb_to_cmyk(r=0, g=0, b=0)
+        assert result["k"] == 100
+        assert result["c"] == 0
+
+    def test_white(self) -> None:
+        from mcp_print.tools.colors import rgb_to_cmyk
+        result = rgb_to_cmyk(r=255, g=255, b=255)
+        assert result == {"c": 0, "m": 0, "y": 0, "k": 0, "hex": "#FFFFFF"}
+
+    def test_hex_input(self) -> None:
+        from mcp_print.tools.colors import rgb_to_cmyk
+        result = rgb_to_cmyk(hex_color="#FF0000")
+        assert result["m"] == 100
+        assert result["hex"] == "#FF0000"
+
+    def test_roundtrip_with_cmyk_to_rgb(self) -> None:
+        from mcp_print.tools.colors import cmyk_to_rgb, rgb_to_cmyk
+        cmyk = rgb_to_cmyk(r=0, g=143, b=255)
+        back = cmyk_to_rgb(cmyk["c"], cmyk["m"], cmyk["y"], cmyk["k"])
+        assert abs(back["r"] - 0) <= 2
+        assert abs(back["g"] - 143) <= 2
+        assert abs(back["b"] - 255) <= 2
+
+    def test_missing_inputs_raise(self) -> None:
+        import pytest
+        from mcp_print.tools.colors import rgb_to_cmyk
+        with pytest.raises(ValueError, match="Provide either"):
+            rgb_to_cmyk(r=255, g=0)
+
+    def test_out_of_range_raises(self) -> None:
+        import pytest
+        from mcp_print.tools.colors import rgb_to_cmyk
+        with pytest.raises(ValueError, match="between 0 and 255"):
+            rgb_to_cmyk(r=300, g=0, b=0)

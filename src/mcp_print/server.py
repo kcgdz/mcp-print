@@ -5,12 +5,15 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from mcp_print.tools.barcode import barcode_ink_coverage
+from mcp_print.tools.booklet import booklet_calculator
 from mcp_print.tools.colors import (
     cmyk_to_rgb,
     color_delta_e,
     pantone_search,
     pantone_to_cmyk,
+    rgb_to_cmyk,
 )
+from mcp_print.tools.imposition import imposition_calculator
 from mcp_print.tools.cost import print_cost_estimate
 from mcp_print.tools.icc import icc_profile_info
 from mcp_print.tools.ink import ink_consumption
@@ -21,7 +24,7 @@ from mcp_print.tools.substrate import substrate_simulator
 
 mcp = FastMCP(
     "mcp-print",
-    description=(
+    instructions=(
         "Professional print & color workflow tools — 2400+ Pantone colors "
         "with fuzzy matching, CMYK/RGB conversion, ink/cost estimation, "
         "Delta E, ICC profiles, spot color separation, barcode coverage, "
@@ -365,6 +368,123 @@ def substrate_simulator_tool(
         return substrate_simulator(
             c=c, m=m, y=y, k=k,
             substrate=substrate, print_method=print_method,
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def rgb_to_cmyk_tool(
+    r: int | None = None,
+    g: int | None = None,
+    b: int | None = None,
+    hex_color: str | None = None,
+) -> dict:
+    """Convert RGB or HEX to CMYK values.
+
+    Provide either hex_color OR all three RGB values.
+
+    Args:
+        r: Red (0-255). Optional.
+        g: Green (0-255). Optional.
+        b: Blue (0-255). Optional.
+        hex_color: HEX color string (e.g. "#DA291C"). Optional.
+
+    Returns:
+        Dict with c, m, y, k (0-100) and hex.
+    """
+    try:
+        return rgb_to_cmyk(r=r, g=g, b=b, hex_color=hex_color)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def imposition_calculator_tool(
+    sheet_width_mm: float,
+    sheet_height_mm: float,
+    piece_width_mm: float,
+    piece_height_mm: float,
+    quantity: int,
+    bleed_mm: float = 3.0,
+    gripper_margin_mm: float = 10.0,
+    gap_mm: float = 3.0,
+    waste_percent: float = 5.0,
+) -> dict:
+    """Calculate n-up imposition — how many pieces fit on a press sheet.
+
+    Tries both piece orientations and picks the layout with the most ups.
+    Reserves a gripper margin along one sheet edge.
+
+    Args:
+        sheet_width_mm: Press sheet width in millimeters (e.g. 700).
+        sheet_height_mm: Press sheet height in millimeters (e.g. 1000).
+        piece_width_mm: Finished piece width in millimeters.
+        piece_height_mm: Finished piece height in millimeters.
+        quantity: Number of finished pieces required.
+        bleed_mm: Bleed per side of each piece (default 3).
+        gripper_margin_mm: Gripper edge reserved on the sheet (default 10).
+        gap_mm: Cutting gap between pieces (default 3).
+        waste_percent: Extra sheets for setup/waste (default 5).
+
+    Returns:
+        Dict with ups_per_sheet, layout, orientation, sheets_needed,
+        sheets_with_waste, and sheet_utilization_percent.
+    """
+    try:
+        return imposition_calculator(
+            sheet_width_mm=sheet_width_mm,
+            sheet_height_mm=sheet_height_mm,
+            piece_width_mm=piece_width_mm,
+            piece_height_mm=piece_height_mm,
+            quantity=quantity,
+            bleed_mm=bleed_mm,
+            gripper_margin_mm=gripper_margin_mm,
+            gap_mm=gap_mm,
+            waste_percent=waste_percent,
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
+def booklet_calculator_tool(
+    page_count: int,
+    paper_gsm: float,
+    pages_per_signature: int = 16,
+    paper_type: str = "uncoated",
+    binding: str = "saddle_stitch",
+    cover_gsm: float = 0.0,
+    cover_paper_type: str = "coated",
+) -> dict:
+    """Calculate booklet signatures, page rounding, and spine thickness.
+
+    Rounds pages up to a multiple of 4, groups them into signatures, and
+    estimates spine thickness from paper caliper — useful for designing
+    covers before printing.
+
+    Args:
+        page_count: Number of content pages (excluding cover).
+        paper_gsm: Text paper weight in GSM.
+        pages_per_signature: Pages per folded signature — 4, 8, 16, or 32.
+        paper_type: Text stock — coated, uncoated, or bulky.
+        binding: saddle_stitch or perfect_bound.
+        cover_gsm: Cover paper GSM; 0 for self-cover (default 0).
+        cover_paper_type: Cover stock — coated, uncoated, or bulky.
+
+    Returns:
+        Dict with total_pages, pages_added_for_signature, signatures,
+        total_sheets, spine_thickness_mm, and binding_note.
+    """
+    try:
+        return booklet_calculator(
+            page_count=page_count,
+            paper_gsm=paper_gsm,
+            pages_per_signature=pages_per_signature,
+            paper_type=paper_type,
+            binding=binding,
+            cover_gsm=cover_gsm,
+            cover_paper_type=cover_paper_type,
         )
     except ValueError as exc:
         return {"error": str(exc)}
