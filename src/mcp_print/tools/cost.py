@@ -12,13 +12,16 @@ class CostBreakdown(TypedDict):
     plates: float
     makeready: float
     run_cost: float
+    paper: float
 
 
 class PrintCostResult(TypedDict):
-    ink_cost_usd: float
-    setup_cost_usd: float
-    total_cost_usd: float
-    cost_per_unit_usd: float
+    ink_cost: float
+    setup_cost: float
+    paper_cost: float
+    total_cost: float
+    cost_per_unit: float
+    currency: str
     breakdown: CostBreakdown
 
 
@@ -60,8 +63,20 @@ def print_cost_estimate(
     paper_gsm: float,
     print_method: PrintMethod,
     sides: int = 1,
+    *,
+    currency: str = "USD",
+    ink_price_per_kg: float | None = None,
+    plate_price: float | None = None,
+    makeready_price: float | None = None,
+    run_price_per_1000: float | None = None,
+    paper_price_per_sheet: float = 0.0,
 ) -> PrintCostResult:
-    """Estimate full print job cost including ink, plates, makeready, and run costs.
+    """Estimate full print job cost including ink, plates, makeready, run,
+    and (optionally) paper costs.
+
+    Default prices are USD industry averages; pass explicit prices in any
+    currency to get a localized quote — all outputs are then in that
+    currency.
 
     Args:
         width_mm: Print area width in millimeters.
@@ -72,9 +87,15 @@ def print_cost_estimate(
         print_method: One of ``offset``, ``flexo``, ``gravure``,
             ``screen``, or ``digital``.
         sides: Number of printed sides (1 or 2).
+        currency: Currency label for the output (default USD).
+        ink_price_per_kg: Override ink price per kg. Optional.
+        plate_price: Override plate price per color. Optional.
+        makeready_price: Override makeready/setup price. Optional.
+        run_price_per_1000: Override run price per 1000 sheets. Optional.
+        paper_price_per_sheet: Paper price per sheet; 0 to exclude paper.
 
     Returns:
-        Dict with cost breakdown and totals.
+        Dict with cost breakdown and totals in the given currency.
 
     Raises:
         ValueError: If inputs are out of range.
@@ -91,6 +112,16 @@ def print_cost_estimate(
         raise ValueError(f"paper_gsm must be positive, got {paper_gsm}")
     if sides not in (1, 2):
         raise ValueError(f"sides must be 1 or 2, got {sides}")
+    for name, val in [
+        ("ink_price_per_kg", ink_price_per_kg), ("plate_price", plate_price),
+        ("makeready_price", makeready_price), ("run_price_per_1000", run_price_per_1000),
+    ]:
+        if val is not None and val < 0:
+            raise ValueError(f"{name} must be non-negative, got {val}")
+    if paper_price_per_sheet < 0:
+        raise ValueError(
+            f"paper_price_per_sheet must be non-negative, got {paper_price_per_sheet}"
+        )
 
     method = print_method.lower()
     if method not in INK_RATES:
@@ -98,35 +129,44 @@ def print_cost_estimate(
         raise ValueError(f"Unknown print_method: {print_method!r}. Choose from: {allowed}")
 
     # Ink cost: assume average 30% coverage per color
-    rate_g_m2, cost_per_kg = INK_RATES[method]
+    rate_g_m2, default_cost_per_kg = INK_RATES[method]
+    cost_per_kg = ink_price_per_kg if ink_price_per_kg is not None else default_cost_per_kg
     area_m2 = (width_mm / 1000) * (height_mm / 1000)
     avg_coverage = 0.30
     ink_grams = area_m2 * rate_g_m2 * avg_coverage * quantity * num_colors * sides
     ink_cost = (ink_grams / 1000) * cost_per_kg
 
     # Plates
-    plate_cost = _PLATE_COST[method] * num_colors * sides
+    per_plate = plate_price if plate_price is not None else _PLATE_COST[method]
+    plate_cost = per_plate * num_colors * sides
 
     # Makeready
-    makeready = _MAKEREADY_COST[method] * sides
+    per_makeready = makeready_price if makeready_price is not None else _MAKEREADY_COST[method]
+    makeready = per_makeready * sides
 
-    # Run cost
-    # Heavier paper costs slightly more to run
+    # Run cost — heavier paper costs slightly more to run
+    per_1000 = run_price_per_1000 if run_price_per_1000 is not None else _RUN_COST_PER_1000[method]
     paper_factor = 1.0 + max(0, (paper_gsm - 100)) / 500
-    run_cost = (_RUN_COST_PER_1000[method] * (quantity / 1000)) * paper_factor * sides
+    run_cost = (per_1000 * (quantity / 1000)) * paper_factor * sides
 
-    total = ink_cost + plate_cost + makeready + run_cost
+    # Paper
+    paper_cost = paper_price_per_sheet * quantity
+
+    total = ink_cost + plate_cost + makeready + run_cost + paper_cost
     per_unit = total / quantity if quantity > 0 else 0
 
     return {
-        "ink_cost_usd": round(ink_cost, 2),
-        "setup_cost_usd": round(plate_cost + makeready, 2),
-        "total_cost_usd": round(total, 2),
-        "cost_per_unit_usd": round(per_unit, 4),
+        "ink_cost": round(ink_cost, 2),
+        "setup_cost": round(plate_cost + makeready, 2),
+        "paper_cost": round(paper_cost, 2),
+        "total_cost": round(total, 2),
+        "cost_per_unit": round(per_unit, 4),
+        "currency": currency,
         "breakdown": {
             "ink": round(ink_cost, 2),
             "plates": round(plate_cost, 2),
             "makeready": round(makeready, 2),
             "run_cost": round(run_cost, 2),
+            "paper": round(paper_cost, 2),
         },
     }
