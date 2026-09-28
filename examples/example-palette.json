@@ -1,0 +1,10 @@
+{
+  "palette": "Example synthetic palette",
+  "colors": [
+    {"name": "Harbor Blue", "c": 88, "m": 42, "y": 8, "k": 4},
+    {"name": "Moss Green", "c": 55, "m": 15, "y": 85, "k": 20},
+    {"name": "Clay Orange", "c": 5, "m": 60, "y": 85, "k": 5},
+    {"name": "Warm Sand", "c": 5, "m": 12, "y": 35, "k": 0},
+    {"name": "Charcoal", "c": 60, "m": 50, "y": 45, "k": 75}
+  ]
+}

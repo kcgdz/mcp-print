@@ -10,8 +10,6 @@ from mcp_print.tools.colors import (
     cmyk_to_rgb,
     color_delta_e,
     lab_convert,
-    pantone_search,
-    pantone_to_cmyk,
     rgb_to_cmyk,
 )
 from mcp_print.tools.cost import print_cost_estimate
@@ -20,6 +18,11 @@ from mcp_print.tools.icc import icc_profile_info
 from mcp_print.tools.imposition import imposition_calculator
 from mcp_print.tools.ink import ink_consumption
 from mcp_print.tools.inklimit import ink_limit_check
+from mcp_print.tools.palette import (
+    PaletteColorNotFoundError,
+    palette_lookup,
+    palette_search,
+)
 from mcp_print.tools.paper import paper_weight_convert
 from mcp_print.tools.pdfcheck import pdf_preflight
 from mcp_print.tools.preflight import preflight_check
@@ -30,13 +33,17 @@ from mcp_print.tools.substrate import substrate_simulator
 mcp = FastMCP(
     "mcp-print",
     instructions=(
-        "Professional print & color workflow tools — 2400+ Pantone colors "
-        "with fuzzy matching, CMYK/RGB/Lab conversion, Delta E (CIEDE2000), "
+        "Professional print & color workflow tools — CMYK/RGB/Lab conversion, "
+        "Delta E (CIEDE2000), "
         "ink/cost estimation, full job quoting, imposition, booklet/spine "
         "calculation, dot gain compensation, TAC/GCR ink limiting, ICC "
         "profiles, spot color separation, barcode coverage, paper weights, "
         "preflight checks (declared values or real PDF files), and "
-        "substrate simulation."
+        "substrate simulation. No color library is bundled: palette lookup, "
+        "palette search, and spot color proximity use a local palette JSON the "
+        "user configures via MCP_PRINT_PALETTE_PATH, and return an error when "
+        "none is set. Palette distances are approximate (no ICC profile) and "
+        "are not catalog values or print guarantees."
     ),
 )
 
@@ -47,26 +54,32 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-def pantone_to_cmyk_tool(pantone_name: str) -> dict:
-    """Convert a Pantone color name to its CMYK equivalent and HEX value.
+def palette_lookup_tool(name: str) -> dict:
+    """Look up a color by name in the user's local palette.
 
-    Supports fuzzy matching — accepts formats like "485C", "pantone 485",
-    "485 coated", "Pantone 485 C", "Warm Red", etc.
+    Requires MCP_PRINT_PALETTE_PATH to point to a palette JSON file; no
+    color library is bundled. Matching is exact after ignoring case and
+    extra whitespace. Names are returned exactly as written in the palette;
+    no prefixes or finish variants are added. Close names are returned only
+    as suggestions, never as the result.
 
     Args:
-        pantone_name: Pantone color name or shorthand.
+        name: Color name as it appears in the palette.
 
     Returns:
-        Dict with name, c, m, y, k (0-100) and hex.
+        Dict with color (name, c, m, y, k, hex), source, palette, and note —
+        or error (plus suggestions when the name is not found).
     """
     try:
-        return pantone_to_cmyk(pantone_name)
+        return palette_lookup(name)
+    except PaletteColorNotFoundError as exc:
+        return {"error": str(exc), "suggestions": exc.suggestions}
     except ValueError as exc:
         return {"error": str(exc)}
 
 
 @mcp.tool()
-def pantone_search_tool(
+def palette_search_tool(
     hex_color: str | None = None,
     c: float | None = None,
     m: float | None = None,
@@ -74,24 +87,27 @@ def pantone_search_tool(
     k: float | None = None,
     limit: int = 5,
 ) -> dict:
-    """Search for the closest Pantone colors by HEX or CMYK proximity.
+    """Find the closest colors in the user's local palette to a HEX or CMYK value.
 
-    Provide either hex_color OR all four CMYK values. Returns the closest
-    matches ranked by Delta E color difference.
+    Requires MCP_PRINT_PALETTE_PATH. Provide either hex_color OR all four
+    CMYK values. Matches are ranked by CIEDE2000 on approximate Lab values
+    (simple CMYK/sRGB math, no ICC profile) — a similarity hint within the
+    user's palette, not catalog accuracy or a print guarantee.
 
     Args:
-        hex_color: HEX color string (e.g. "#DA291C"). Optional.
+        hex_color: HEX color string (e.g. "#1E6FB0"). Optional.
         c: Cyan (0-100). Optional.
         m: Magenta (0-100). Optional.
         y: Yellow (0-100). Optional.
         k: Key/Black (0-100). Optional.
-        limit: Number of results to return (default 5).
+        limit: Number of results to return (1-100, default 5).
 
     Returns:
-        Dict with matches list and search_type.
+        Dict with matches (each with delta_e), search_type, delta_e_method,
+        source, palette, and note.
     """
     try:
-        return pantone_search(hex_color=hex_color, c=c, m=m, y=y, k=k, limit=limit)
+        return palette_search(hex_color=hex_color, c=c, m=m, y=y, k=k, limit=limit)
     except ValueError as exc:
         return {"error": str(exc)}
 
@@ -217,17 +233,22 @@ def spot_color_separator_tool(
     colors: list[dict[str, float]],
     threshold: float = 5.0,
 ) -> dict:
-    """Identify which colors in a design should be spot vs process colors.
+    """Report how close each design color is to the user's local palette.
 
-    Colors close to a Pantone swatch (Delta E < threshold) are recommended
-    as spot colors for consistency. Others are better as process (CMYK).
+    Requires MCP_PRINT_PALETTE_PATH; returns an error when no palette is
+    configured. Each CMYK color is matched to its nearest palette entry and
+    grouped as within or beyond the Delta E threshold (CIEDE2000 on
+    approximate Lab values). This is a similarity report only: it does not
+    decide whether a color should be printed as a spot ink or as process.
 
     Args:
         colors: List of CMYK dicts, each with keys c, m, y, k (0-100).
-        threshold: Delta E cutoff for spot color recommendation (default 5.0).
+        threshold: Delta E cutoff for grouping (default 5.0).
 
     Returns:
-        Dict with spot_colors, process_colors, and reasoning.
+        Dict with within_threshold, beyond_threshold (each entry has
+        nearest_palette_color, nearest_palette_cmyk, delta_e), threshold,
+        delta_e_method, source, palette, summary, and note.
     """
     try:
         return spot_color_separator(colors, threshold)
@@ -709,16 +730,6 @@ def pdf_preflight_tool(file_path: str, target_method: str = "offset") -> dict:
 # ---------------------------------------------------------------------------
 # Resources & prompts
 # ---------------------------------------------------------------------------
-
-
-@mcp.resource("mcp-print://pantone-database")
-def pantone_database_resource() -> str:
-    """The full Pantone color database (2400+ colors) as JSON."""
-    import json
-
-    from mcp_print.tools.colors import _load_db
-
-    return json.dumps(_load_db(), ensure_ascii=False)
 
 
 @mcp.resource("mcp-print://substrate-profiles")

@@ -9,11 +9,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/kcgdz/mcp-print/actions/workflows/ci.yml/badge.svg)](https://github.com/kcgdz/mcp-print/actions/workflows/ci.yml)
 
-2400+ Pantone colors &bull; CMYK/RGB conversion &bull; Ink & cost estimation &bull; ICC profiles &bull; Spot color separation &bull; Barcode coverage &bull; Delta E &bull; Paper weights &bull; Preflight checks &bull; Substrate simulation &bull; Imposition &bull; Booklet & spine calculation &bull; Lab conversion &bull; CIEDE2000 &bull; TAC/GCR &bull; Dot gain compensation &bull; PDF preflight &bull; Job quoting
+CMYK/RGB conversion &bull; Ink & cost estimation &bull; ICC profiles &bull; Spot color separation &bull; Barcode coverage &bull; Delta E &bull; Paper weights &bull; Preflight checks &bull; Substrate simulation &bull; Imposition &bull; Booklet & spine calculation &bull; Lab conversion &bull; CIEDE2000 &bull; TAC/GCR &bull; Dot gain compensation &bull; PDF preflight &bull; Job quoting &bull; Your own local color palette
 
-**Works 100% offline &mdash; no API keys needed**
+**Works 100% offline &mdash; no API keys needed &mdash; no bundled color library**
 
-[Install](#install) &bull; [Configure](#configure-with-claude-code) &bull; [Tools](#tools) &bull; [Examples](#usage-examples) &bull; [Contributing](#development)
+[Install](#install) &bull; [Configure](#configure-with-claude-code) &bull; [Local palette](#local-color-palette) &bull; [Tools](#tools) &bull; [Examples](#usage-examples) &bull; [Contributing](#development)
 
 Backed by [optiraj.com](https://optiraj.com) — SaaS for print professionals
 
@@ -25,10 +25,10 @@ Backed by [optiraj.com](https://optiraj.com) — SaaS for print professionals
 
 | Role | Use case |
 |---|---|
-| **Print designers** | Check Pantone-to-CMYK conversions without leaving your editor |
+| **Print designers** | Convert between CMYK, RGB, HEX, and Lab without leaving your editor |
 | **Prepress engineers** | Estimate ink costs, verify color accuracy (Delta E), analyze ICC profiles, run preflight checks |
 | **Packaging teams** | Convert paper weights, separate spot vs process colors, cost entire print runs, simulate substrate shifts |
-| **Brand managers** | Find the closest Pantone match to any HEX color |
+| **Brand managers** | Find the closest entry in your own color palette to any HEX or CMYK value |
 
 ## Install
 
@@ -53,21 +53,69 @@ Add to your Claude Code MCP config (`~/.claude/settings.json` or project `.mcp.j
 }
 ```
 
-Restart Claude Code — all twenty tools will be available immediately.
+Restart Claude Code — all twenty tools will be available immediately. Palette tools additionally need a [local palette file](#local-color-palette); without one they return an error and every other tool keeps working.
+
+## Local color palette
+
+mcp-print **does not ship or download any color library.** `palette_lookup_tool`, `palette_search_tool`, and `spot_color_separator_tool` work on a JSON file that you provide and point to explicitly:
+
+```json
+{
+  "mcpServers": {
+    "print": {
+      "command": "python",
+      "args": ["-m", "mcp_print"],
+      "env": { "MCP_PRINT_PALETTE_PATH": "/home/me/.config/mcp-print/studio.palette.json" }
+    }
+  }
+}
+```
+
+Use an absolute path (relative paths resolve against the server's working directory; `~` is expanded). The file is re-read automatically when it changes.
+
+### Schema
+
+```json
+{
+  "palette": "Example synthetic palette",
+  "colors": [
+    { "name": "Harbor Blue", "c": 88, "m": 42, "y": 8,  "k": 4 },
+    { "name": "Moss Green",  "c": 55, "m": 15, "y": 85, "k": 20 },
+    { "name": "Clay Orange", "c": 5,  "m": 60, "y": 85, "k": 5 }
+  ]
+}
+```
+
+| Field | Rules |
+|---|---|
+| `palette` | Optional label, echoed in results |
+| `colors` | Required, non-empty list |
+| `colors[].name` | Required, non-empty string (max 200 chars), unique ignoring case and repeated whitespace |
+| `colors[].c/m/y/k` | Required JSON numbers from 0 to 100. Booleans, strings, `NaN`, `Infinity`, and out-of-range values are rejected |
+
+Other fields are rejected rather than silently ignored. The file must be UTF-8 (a BOM is accepted) and at most 10 MB. A synthetic sample lives in [`examples/example-palette.json`](examples/example-palette.json).
+
+### Behavior and limits
+
+- **No palette configured, missing file, invalid JSON, empty list, or invalid entry** → the palette tools return an `error` explaining what to fix (entry index and field, without echoing your values). The server still starts and all other tools work.
+- **Names are used exactly as you wrote them.** Lookup ignores case and extra whitespace only; no brand prefixes or finish suffixes are added or guessed. Close names are returned as `suggestions`, never as a match.
+- **Distances are approximate.** CMYK is converted to sRGB and Lab with simple formulas and no ICC profile, then compared with CIEDE2000. Results indicate similarity *within your palette* — they are not official catalog values, not a measure of print accuracy, and not a guarantee of how a color will print.
+- **Your palette stays local.** It is read only from the path you configure, never logged, bundled, uploaded, or exposed as an MCP resource. `*.palette.json` files and `palettes/` directories are git-ignored in this repo; keep palette files outside the project anyway.
+- **Rights are yours to check.** Palette files are subject to their own terms of use. Pointing mcp-print at a file does not make its use licensed or appropriate; make sure you are entitled to use the data you load.
 
 ## Tools
 
-### Color & Pantone
+### Color & Palette
 
 | Tool | Description |
 |---|---|
-| `pantone_to_cmyk_tool` | Convert a Pantone name to CMYK + HEX. Fuzzy matching — `"485C"`, `"pantone 485"`, `"Warm Red"` all work |
-| `pantone_search_tool` | Find the closest Pantone colors to any HEX or CMYK value (top N matches by Delta E) |
+| `palette_lookup_tool` | Look up a color by name in your [local palette](#local-color-palette) (case/whitespace-insensitive, names kept as written) |
+| `palette_search_tool` | Find the closest entries in your local palette to a HEX or CMYK value (approximate CIEDE2000) |
 | `cmyk_to_rgb_tool` | Convert CMYK values (0-100) to RGB (0-255) + HEX |
 | `rgb_to_cmyk_tool` | Convert RGB (0-255) or HEX to CMYK values (0-100) |
 | `color_delta_e_tool` | Calculate Delta E (CIEDE2000 or CIE76) between two CMYK colors with quality interpretation |
 | `lab_convert_tool` | Convert between CIELAB (spectrophotometer readings), CMYK, RGB, and HEX |
-| `spot_color_separator_tool` | Given a list of design colors, recommend which should be spot vs process |
+| `spot_color_separator_tool` | Report how close each design color is to your local palette (within/beyond a Delta E threshold) — a similarity report, not a spot-vs-process decision |
 
 ### Print Production
 
@@ -98,31 +146,39 @@ Once configured, just ask Claude naturally:
 
 ---
 
-### Pantone Lookup
+### Palette Lookup
 
-> *"What's the CMYK breakdown for Pantone 485 C?"*
+> *"What are the CMYK values of Harbor Blue in my palette?"*
 
-Fuzzy matching accepts any format: `"485C"`, `"pantone 485"`, `"485 coated"`, `"Warm Red"`
+With [`examples/example-palette.json`](examples/example-palette.json) configured:
 
 ```json
-{ "name": "Pantone 485 C", "c": 0, "m": 95, "y": 100, "k": 0, "hex": "#FF0D0D" }
+{
+  "color": { "name": "Harbor Blue", "c": 88, "m": 42, "y": 8, "k": 4, "hex": "#1D8EE1" },
+  "source": "user_palette",
+  "palette": "Example synthetic palette",
+  "note": "Values come from your local palette file. ..."
+}
 ```
 
-<img src="cmyk.png" alt="Pantone CMYK lookup example" width="700">
+Without a configured palette the tool returns `{"error": "No color palette configured. Set MCP_PRINT_PALETTE_PATH ..."}`.
 
 ---
 
-### Reverse Pantone Search
+### Palette Search
 
-> *"What Pantone colors are closest to #DA291C?"*
+> *"Which of my palette colors are closest to #2A8FD8?"*
 
 ```json
 {
   "matches": [
-    { "name": "Pantone 485 C", "c": 0, "m": 95, "y": 100, "k": 0, "hex": "#FF0D0D" },
-    { "name": "Pantone 485 M", "c": 1, "m": 93, "y": 99, "k": 2, "hex": "#FA0E03" }
+    { "name": "Harbor Blue", "c": 88, "m": 42, "y": 8, "k": 4, "hex": "#1D8EE1", "delta_e": 1.12 },
+    { "name": "Charcoal", "c": 60, "m": 50, "y": 45, "k": 75, "hex": "#1A2023", "delta_e": 41.77 }
   ],
-  "search_type": "hex #DA291C"
+  "search_type": "hex #2A8FD8",
+  "delta_e_method": "ciede2000",
+  "source": "user_palette",
+  "palette": "Example synthetic palette"
 }
 ```
 
@@ -188,20 +244,27 @@ Prices default to USD industry averages — pass your own ink/plate/makeready/ru
 
 ---
 
-### Spot vs Process Recommendation
+### Palette Proximity (spot color separator)
 
-> *"Should these colors be spot or process?"*
+> *"How close are these design colors to my palette?"*
 
 ```json
 {
-  "spot_colors": [
-    { "nearest_pantone": "Pantone 485 C", "delta_e": 0.0, "reason": "Close match — use spot for accuracy" }
+  "within_threshold": [
+    { "color": { "c": 86, "m": 40, "y": 10, "k": 5 }, "hex": "#2291DA",
+      "nearest_palette_color": "Harbor Blue", "nearest_palette_cmyk": { "c": 88, "m": 42, "y": 8, "k": 4 }, "delta_e": 1.79 }
   ],
-  "process_colors": [
-    { "nearest_pantone": "Pantone 375 C", "delta_e": 8.2, "reason": "No close match — reproduce as CMYK" }
-  ]
+  "beyond_threshold": [
+    { "color": { "c": 0, "m": 100, "y": 0, "k": 0 }, "hex": "#FF00FF",
+      "nearest_palette_color": "Charcoal", "nearest_palette_cmyk": { "c": 60, "m": 50, "y": 45, "k": 75 }, "delta_e": 44.4 }
+  ],
+  "threshold": 5.0,
+  "delta_e_method": "ciede2000",
+  "summary": "Compared 2 colors with 5 palette entries (Delta E ciede2000, threshold 5.0): 1 within threshold, 1 beyond."
 }
 ```
+
+Being close to a palette color does not by itself mean a spot ink would be more accurate or more suitable — that depends on ink availability, press setup, substrate, cost, brand requirements, and measured proofs.
 
 ---
 
@@ -347,19 +410,21 @@ Rounds pages to a multiple of 4, warns when the page count doesn't suit the chos
 
 ---
 
-## Pantone Database
+## Migrating from 0.5.x
 
-The built-in database contains **2,415 Pantone colors**:
+The bundled Pantone table and its generator script were removed because their source and redistribution rights could not be verified. This is a **breaking change**:
 
-| Series | Range | Description |
-|---|---|---|
-| Numeric | 100–699 | Yellows, oranges, reds, pinks, purples, blues, greens, grays, browns |
-| 7000 series | 7400–7547 | Extended gamut colors |
-| Named | — | Black, White, Warm Red, Reflex Blue, Process Blue, Cool/Warm Grays 1–11, Hexachrome series |
+| Before (≤ 0.5.x) | Now |
+|---|---|
+| `pantone_to_cmyk_tool(pantone_name)` | `palette_lookup_tool(name)` — exact (case/whitespace-insensitive) name from your palette; no `Pantone` prefix or `C`/`U`/`M` variants are generated |
+| `pantone_search_tool(...)` | `palette_search_tool(...)` — same inputs, ranked by CIEDE2000, adds `delta_e` per match |
+| `spot_color_separator_tool` → `spot_colors` / `process_colors` | `within_threshold` / `beyond_threshold` |
+| `nearest_pantone` | `nearest_palette_color` (+ `nearest_palette_cmyk`) |
+| `reason` / `reasoning` | `summary` + `note`; no spot/process recommendation is made |
+| Resource `mcp-print://pantone-database` | Removed, with no replacement (palettes are never exposed in bulk) |
+| Python: `colors.pantone_to_cmyk`, `colors.pantone_search` | `palette.palette_lookup`, `palette.palette_search` |
 
-Every color is available in three finishes: **Coated (C)**, **Uncoated (U)**, and **Matte (M)**.
-
-Fuzzy matching handles format variations — `"485C"`, `"pantone 485"`, `"485 coated"` all resolve correctly.
+All palette features now require `MCP_PRINT_PALETTE_PATH`. The distance metric changed from CIE76 to CIEDE2000, so the same `threshold` groups colors differently than before. No deprecated aliases are kept.
 
 ## Development
 
@@ -372,7 +437,7 @@ pytest tests/ -v
 ```
 
 ```
-173 passed in 0.61s
+235 passed
 ```
 
 ## Acknowledgements
@@ -381,4 +446,4 @@ Development is supported by [Optiraj](https://optiraj.com) — a SaaS platform f
 
 ## License
 
-MIT
+mcp-print's code is released under the MIT License. Color palettes you load are not part of mcp-print and remain subject to their own terms of use.
