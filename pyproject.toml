@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-print"
-version = "0.5.0"
+version = "0.6.0"
 description = "MCP server for professional print and color workflows — CMYK/RGB/Lab conversion, Delta E, ink/cost estimation, ICC profiles, preflight checks, substrate simulation, and lookups in your own local color palette."
 readme = "README.md"
 license = "MIT"

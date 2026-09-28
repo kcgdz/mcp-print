@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — breaking
+## v0.6.0 — 2026-09-28 (breaking)
 
 The bundled Pantone color table has been removed from the distribution because
 its source and redistribution rights could not be verified. Palette features
