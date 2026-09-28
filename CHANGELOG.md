@@ -38,6 +38,8 @@ are left as published.
   `summary` + `note`. Distance metric changed from CIE76 to CIEDE2000.
 - Package description, server instructions, README, and the `print-workflow`
   skill no longer describe a built-in Pantone library.
+- Dependency pinned to `mcp>=1.0.0,<2`: mcp 2.x removed `FastMCP`, so fresh
+  installs could not start the server
 - Builds: the wheel excludes JSON files and the sdist uses an explicit include
   list, so palette files in the working tree are not packaged.
 
